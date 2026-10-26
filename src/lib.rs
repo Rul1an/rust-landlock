@@ -12,7 +12,7 @@
 //!
 //! This crate provides a safe abstraction for the Landlock system calls, along with some helpers.
 //!
-//! Minimum Supported Rust Version (MSRV): 1.71
+//! Minimum Supported Rust Version (MSRV): 1.77
 //!
 //! # Use cases
 //!
@@ -29,9 +29,10 @@
 //!
 //! # Current limitations
 //!
-//! This crate exposes the Landlock features available as of Linux 7.1
-//! (Landlock [ABI v9](ABI::V9))
-//! and then inherits some [kernel limitations](https://www.kernel.org/doc/html/latest/userspace-api/landlock.html#current-limitations)
+//! This crate exposes the Landlock features available as of Linux 7.2
+//! (Landlock [ABI v10](ABI::V10)), except for quiet access masks and quiet rules,
+//! which are not exposed by this crate yet.
+//! It then inherits some [kernel limitations](https://www.kernel.org/doc/html/latest/userspace-api/landlock.html#current-limitations)
 //! that will be addressed with future kernel releases
 //! (e.g., arbitrary mounts are always denied).
 //!
@@ -943,5 +944,23 @@ mod tests {
         // The restriction did not leak to the parent thread.
         assert_eq!(fs::read(&allowed).unwrap(), ALLOWED);
         assert_eq!(fs::read(&denied).unwrap(), DENIED);
+    }
+
+    #[test]
+    fn abi_v10_udp() {
+        // ResolveUnix keeps ABI v9 partially enforced before UDP support in v10.
+        check_ruleset_support(
+            ABI::V9,
+            Some(ABI::V10),
+            move |ruleset: Ruleset| -> _ {
+                Ok(ruleset
+                    .handle_access(AccessFs::ResolveUnix)?
+                    .handle_access(AccessNet::BindUdp | AccessNet::ConnectSendUdp)?
+                    .create()?
+                    .add_rule(NetPort::new(1, AccessNet::ConnectSendUdp))?
+                    .restrict_self()?)
+            },
+            false,
+        );
     }
 }
